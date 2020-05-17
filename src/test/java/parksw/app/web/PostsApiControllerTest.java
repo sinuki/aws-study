@@ -103,4 +103,17 @@ class PostsApiControllerTest {
         assertThat(body.getContent()).isEqualTo(savedPost.getContent());
         assertThat(body.getAuthor()).isEqualTo(savedPost.getAuthor());
     }
+
+    @Test
+    void Posts_삭제된다() {
+        Posts savedPost = postsRepository.save(Posts.builder().title("title").content("content").author("parksw").build());
+        Long deleteId = savedPost.getId();
+        String url = String.join("", "http://localhost:", String.valueOf(port), "/api/v1/posts/", String.valueOf(deleteId));
+
+        ResponseEntity<Long> responseEntity = restTemplate.exchange(url, HttpMethod.DELETE, HttpEntity.EMPTY, Long.class);
+
+        assertThat(responseEntity.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(responseEntity.getBody()).isEqualTo(deleteId);
+        assertThat(postsRepository.findById(deleteId).isEmpty()).isTrue();
+    }
 }
