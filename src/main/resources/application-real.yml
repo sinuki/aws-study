@@ -6,3 +6,7 @@ spring:
       hibernate.dialect: org.hibernate.dialect.MySQL5InnoDBDialect
   session:
     store-type: jdbc
+  mvc:
+    view:
+      prefix: classpath:/templates/
+      suffix: .html
