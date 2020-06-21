@@ -1,3 +1,16 @@
 spring:
   jpa:
     show-sql: true
+    generate-ddl: true
+  h2:
+    console: true
+  session:
+    store-type: jdbc
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: test
+            client-secret: test
+            scope: profile, email

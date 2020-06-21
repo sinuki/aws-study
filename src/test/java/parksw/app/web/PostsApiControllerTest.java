@@ -1,24 +1,28 @@
 package parksw.app.web;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.web.server.LocalServerPort;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 import parksw.app.domain.posts.Posts;
 import parksw.app.domain.posts.PostsRepository;
-import parksw.app.web.dto.PostsResponseDto;
 import parksw.app.web.dto.PostsSaveRequestDto;
 import parksw.app.web.dto.PostsUpdateRequestDto;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.CoreMatchers.is;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
  * PostsApiControllerTest
@@ -28,14 +32,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class PostsApiControllerTest {
 
-    @LocalServerPort
-    private int port;
-
-    @Autowired
-    private TestRestTemplate restTemplate;
-
     @Autowired
     private PostsRepository postsRepository;
+
+    @Autowired
+    private WebApplicationContext wac;
+
+    private MockMvc mvc;
+
+    @BeforeEach
+    void setup() {
+        this.mvc = MockMvcBuilders.webAppContextSetup(wac)
+                .apply(springSecurity())
+                .build();
+    }
 
     @AfterEach
     void cleanup() {
@@ -43,7 +53,8 @@ class PostsApiControllerTest {
     }
 
     @Test
-    void Posts_등록된다() {
+    @WithMockUser(roles = "USER")
+    void Posts_등록된다() throws Exception {
         String title = "title";
         String content = "content";
         String author = "parksw";
@@ -52,12 +63,12 @@ class PostsApiControllerTest {
                 .content(content)
                 .author(author)
                 .build();
-        String url = String.join("", "http://localhost:", String.valueOf(port), "/api/v1/posts");
 
-        ResponseEntity<Long> responseEntity = restTemplate.postForEntity(url, requestDto, Long.class);
+        mvc.perform(post("/api/v1/posts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(requestDto)))
+                .andExpect(status().isOk());
 
-        assertThat(responseEntity.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(responseEntity.getBody()).isGreaterThan(0L);
         List<Posts> all = postsRepository.findAll();
         Posts post = all.get(0);
         assertThat(post.getTitle()).isEqualTo(title);
@@ -66,7 +77,8 @@ class PostsApiControllerTest {
     }
 
     @Test
-    void Posts_수정된다() {
+    @WithMockUser(roles = "USER")
+    void Posts_수정된다() throws Exception {
         Posts savedPost = postsRepository.save(Posts.builder().title("title").content("content").author("parksw").build());
         Long updateId = savedPost.getId();
         String expectedTitle = "title2";
@@ -75,13 +87,12 @@ class PostsApiControllerTest {
                 .title(expectedTitle)
                 .content(expectedContent)
                 .build();
-        String url = String.join("", "http://localhost:", String.valueOf(port), "/api/v1/posts/", String.valueOf(updateId));
-        HttpEntity<PostsUpdateRequestDto> requestEntity = new HttpEntity<>(requestDto);
 
-        ResponseEntity<Long> responseEntity = restTemplate.exchange(url, HttpMethod.PUT, requestEntity, Long.class);
+        mvc.perform(put("/api/v1/posts/{id}", updateId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(new ObjectMapper().writeValueAsString(requestDto)))
+                .andExpect(status().isOk());
 
-        assertThat(responseEntity.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(responseEntity.getBody()).isGreaterThan(0L);
         List<Posts> all = postsRepository.findAll();
         Posts post = all.get(0);
         assertThat(post.getTitle()).isEqualTo(expectedTitle);
@@ -89,31 +100,30 @@ class PostsApiControllerTest {
     }
 
     @Test
-    void Posts_조회된다() {
+    @WithMockUser(roles = "USER")
+    void Posts_조회된다() throws Exception {
         Posts savedPost = postsRepository.save(Posts.builder().title("title").content("content").author("parksw").build());
         Long showableId = savedPost.getId();
-        String url = String.join("", "http://localhost:", String.valueOf(port), "/api/v1/posts/", String.valueOf(showableId));
 
-        ResponseEntity<PostsResponseDto> responseEntity = restTemplate.getForEntity(url, PostsResponseDto.class);
-
-        assertThat(responseEntity.getStatusCode()).isEqualTo(HttpStatus.OK);
-        PostsResponseDto body = responseEntity.getBody();
-        assertThat(body.getId()).isEqualTo(savedPost.getId());
-        assertThat(body.getTitle()).isEqualTo(savedPost.getTitle());
-        assertThat(body.getContent()).isEqualTo(savedPost.getContent());
-        assertThat(body.getAuthor()).isEqualTo(savedPost.getAuthor());
+        mvc.perform(get("/api/v1/posts/{id}", showableId)
+                    .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(savedPost.getId().intValue())))
+                .andExpect(jsonPath("$.title", is(savedPost.getTitle())))
+                .andExpect(jsonPath("$.content", is(savedPost.getContent())))
+                .andExpect(jsonPath("$.author", is(savedPost.getAuthor())));
     }
 
     @Test
-    void Posts_삭제된다() {
+    @WithMockUser(roles = "USER")
+    void Posts_삭제된다() throws Exception {
         Posts savedPost = postsRepository.save(Posts.builder().title("title").content("content").author("parksw").build());
         Long deleteId = savedPost.getId();
-        String url = String.join("", "http://localhost:", String.valueOf(port), "/api/v1/posts/", String.valueOf(deleteId));
 
-        ResponseEntity<Long> responseEntity = restTemplate.exchange(url, HttpMethod.DELETE, HttpEntity.EMPTY, Long.class);
-
-        assertThat(responseEntity.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(responseEntity.getBody()).isEqualTo(deleteId);
+        mvc.perform(delete("/api/v1/posts/{id}", deleteId)
+                    .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().string(is(deleteId.toString())));
         assertThat(postsRepository.findById(deleteId).isEmpty()).isTrue();
     }
 }
